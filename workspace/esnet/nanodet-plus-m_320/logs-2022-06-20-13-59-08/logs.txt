@@ -1,0 +1,6 @@
+[NanoDet][06-20 13:59:08]INFO: Setting up data...
+[NanoDet][06-20 13:59:30]INFO: Creating model...
+[NanoDet][06-20 13:59:31]INFO: Loaded average state from checkpoint.
+[NanoDet][06-20 13:59:32]INFO: Weight Averaging is enabled
+[NanoDet][06-20 14:00:04]INFO: Train|Epoch5/300|Iter29600(31)| lr:1.00e-03| loss_qfl:0.6319| loss_bbox:0.5476| loss_dfl:0.2362| aux_loss_qfl:0.5804| aux_loss_bbox:0.4843| aux_loss_dfl:0.2198| 
+[NanoDet][06-20 14:00:41]INFO: Train|Epoch5/300|Iter29650(81)| lr:1.00e-03| loss_qfl:0.6308| loss_bbox:0.5146| loss_dfl:0.2349| aux_loss_qfl:0.5716| aux_loss_bbox:0.4507| aux_loss_dfl:0.2215| 

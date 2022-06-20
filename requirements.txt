@@ -1,0 +1,15 @@
+Cython
+matplotlib
+numpy
+omegaconf>=2.0.1
+onnx
+onnx-simplifier
+opencv-python
+pyaml
+pytorch-lightning>=1.4.0
+tabulate
+tensorboard
+termcolor
+torchmetrics
+tqdm
+
