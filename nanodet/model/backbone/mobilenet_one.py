@@ -37,11 +37,6 @@ class ConvBNReLU(nn.Module):
             nn.BatchNorm2d(out_planes)
         )
 
-        self.conv_aux3 = nn.Sequential(
-            nn.Conv2d(in_planes, out_planes, (3, 1), stride, (1, 0), groups=groups, bias=False),
-            nn.BatchNorm2d(out_planes)
-        )
-
         self.act_layers = act_layers(activation)
 
     def forward(self, x):
@@ -51,22 +46,19 @@ class ConvBNReLU(nn.Module):
             x0 = self.conv(x)
             x1 = self.conv_aux1(x)
             x2 = self.conv_aux2(x)
-            x3 = self.conv_aux3(x)
 
-            x = torch.add(x, x1)
+            x = torch.add(x0, x1)
             x = torch.add(x, x2)
-            x = torch.add(x, x3)
 
         return self.act_layers(x)
 
-
     def get_equivalent_kernel_bias(self):
-        kernel3x3, bias3x3 = self._fuse_bn_tensor(self.rbr_dense)
-        kernel1x1, bias1x1 = self._fuse_bn_tensor(self.rbr_1x1)
-        kernelid, biasid = self._fuse_bn_tensor(self.rbr_identity)
+        kernel3x3, bias3x3 = self._fuse_bn_tensor(self.conv)
+        kernel1x3, bias1x3 = self._fuse_bn_tensor(self.conv_aux1)
+        kernel3x1, bias3x1 = self._fuse_bn_tensor(self.conv_aux2)
         return (
-            kernel3x3 + self._pad_1x1_to_3x3_tensor(kernel1x1) + kernelid,
-            bias3x3 + bias1x1 + biasid,
+            kernel3x3 + self._pad_1x3_to_3x3_tensor(kernel1x3) + self._pad_3x1_to_3x3_tensor(kernel3x1),
+            bias3x3 + bias1x3 + bias3x1,
         )
 
     def _pad_1x1_to_3x3_tensor(self, kernel1x1):

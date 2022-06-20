@@ -5,7 +5,7 @@
 #           AP_small = 0.083
 #               AP_m = 0.278
 #               AP_l = 0.451
-save_dir: workspace/nanodet-plus-m_320_192_soda
+save_dir: workspace/mobilenet_one/jm_adas_coco/nanodet-plus-m_320
 model:
   weight_averager:
     name: ExpMovingAverager
@@ -14,13 +14,12 @@ model:
     name: NanoDetPlus
     detach_epoch: 10
     backbone:
-      name: ShuffleNetV2
-      model_size: 1.0x
-      out_stages: [2,3,4]
+      name: MobileNetONE
+      out_stages: [2,4,6]
       activation: LeakyReLU
     fpn:
       name: GhostPAN
-      in_channels: [116, 232, 464]
+      in_channels: [32, 96, 320]
       out_channels: 96
       kernel_size: 5
       num_extra_level: 1
@@ -28,7 +27,7 @@ model:
       activation: LeakyReLU
     head:
       name: NanoDetPlusHead
-      num_classes: 6
+      num_classes: 14
       input_channel: 96
       feat_channels: 96
       stacked_convs: 2
@@ -48,12 +47,12 @@ model:
           name: DistributionFocalLoss
           loss_weight: 0.25
         loss_bbox:
-          name: CIoULoss
+          name: GIoULoss
           loss_weight: 2.0
     # Auxiliary head, only use in training time.
     aux_head:
       name: SimpleConvHead
-      num_classes: 6
+      num_classes: 14
       input_channel: 192
       feat_channels: 192
       stacked_convs: 4
@@ -63,9 +62,9 @@ model:
 data:
   train:
     name: CocoDataset
-    img_path: "E:\\dataset\\coco\\images\\train2017"
-    ann_path: "E:\\dataset\\coco\\annos\\merge.json"
-    input_size: [320,192] #[w,h]
+    img_path: /home/liyuan/data/jm2021_adas_coco/train_images
+    ann_path: /home/liyuan/data/jm2021_adas_coco/annotations/instances_train.json
+    input_size: [320,320] #[w,h]
     keep_ratio: False
     pipeline:
       perspective: 0.0
@@ -81,19 +80,19 @@ data:
       normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
   val:
     name: CocoDataset
-    img_path: "E:\\dataset\\coco\\images\\train2017"
-    ann_path: "E:\\dataset\\coco\\annos\\val.json"
-    input_size: [320,192] #[w,h]
+    img_path: /home/liyuan/data/jm2021_adas_coco/val_images
+    ann_path: /home/liyuan/data/jm2021_adas_coco/annotations/instances_val.json
+    input_size: [320,320] #[w,h]
     keep_ratio: False
     pipeline:
       normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
 device:
   gpu_ids: [0] # Set like [0, 1, 2, 3] if you have multi-GPUs
-  workers_per_gpu: 0
-  batchsize_per_gpu: 128
+  workers_per_gpu: 2
+  batchsize_per_gpu: 16
 schedule:
-#  resume: 1
-#  load_model: "E:\\nanodet\\workspace\\nanodet-plus-lite-0.75x_160_96\\model_last.ckpt"
+#  resume:
+#  load_model:
   optimizer:
     name: AdamW
     lr: 0.001
@@ -102,18 +101,19 @@ schedule:
     name: linear
     steps: 500
     ratio: 0.0001
-  total_epochs: 200
+  total_epochs: 300
   lr_schedule:
     name: CosineAnnealingLR
-    T_max: 200
+    T_max: 300
     eta_min: 0.00005
-  val_intervals: 5
+  val_intervals: 10
 grad_clip: 35
 evaluator:
   name: CocoDetectionEvaluator
   save_key: mAP
 log:
-  interval: 5
+  interval: 50
 
-class_names: ['Pedestrian', 'Cyclist', 'Car', 'Trunk', 'Tram', 'Tricycle']
-
+class_names: ['car','bus','truck','person','bicycle',
+              'wheel','front_rear','traffic_sign','humanlike','tunnel',
+              'zebra_crossing','vehicle_like','tricycle','vehicle_side']
