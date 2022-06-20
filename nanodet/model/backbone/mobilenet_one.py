@@ -118,7 +118,7 @@ class ConvBNReLU(nn.Module):
 
 
 class InvertedResidual(nn.Module):
-    def __init__(self, inp, oup, stride, expand_ratio, activation="ReLU", is_training=True):
+    def __init__(self, inp, oup, stride, expand_ratio, activation="ReLU", deploy=False):
         super(InvertedResidual, self).__init__()
         self.stride = stride
         assert stride in [1, 2]
@@ -141,7 +141,7 @@ class InvertedResidual(nn.Module):
                     stride=stride,
                     groups=hidden_dim,
                     activation=activation,
-                    is_training=is_training
+                    deploy=deploy
                 ),
                 # pw-linear
                 nn.Conv2d(hidden_dim, oup, 1, 1, 0, bias=False),
@@ -165,7 +165,7 @@ class MobileNetONE(nn.Module):
         last_channel=320,
         activation="ReLU",
         act=None,
-        is_training=True
+        deploy=False
     ):
         super(MobileNetONE, self).__init__()
         # TODO: support load torchvison pretrained weight
@@ -175,6 +175,7 @@ class MobileNetONE(nn.Module):
         input_channel = 32
         self.last_channel = last_channel
         self.activation = activation
+        self.deploy = deploy
         if act is not None:
             warnings.warn(
                 "Warning! act argument has been deprecated, " "use activation instead!"
@@ -216,6 +217,7 @@ class MobileNetONE(nn.Module):
                         s,
                         expand_ratio=t,
                         activation=self.activation,
+                        deploy=self.deploy
                     )
                 )
             else:
@@ -226,6 +228,7 @@ class MobileNetONE(nn.Module):
                         1,
                         expand_ratio=t,
                         activation=self.activation,
+                        deploy=self.deploy
                     )
                 )
             self.input_channel = output_channel
