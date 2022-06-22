@@ -117,7 +117,8 @@ work_dirs/
 *.pth
 *.py~
 *.sh~
+*.yml
 
 workspace/
-
+config/
 .vs/

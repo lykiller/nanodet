@@ -11,7 +11,7 @@ import torch.nn as nn
 from .activation import act_layers
 from .init_weights import constant_init, kaiming_init
 from .norm import build_norm_layer
-
+from torch.nn import BatchNorm2d, Conv2d
 
 class ConvModule(nn.Module):
     """A conv block that contains conv/norm/activation layers.
@@ -385,6 +385,156 @@ class RepVGGConvModule(nn.Module):
         return kernel * t, beta - running_mean * gamma / std
 
     def repvgg_convert(self):
+        kernel, bias = self.get_equivalent_kernel_bias()
+        return (
+            kernel.detach().cpu().numpy(),
+            bias.detach().cpu().numpy(),
+        )
+
+
+class RepConvBNLayer(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 stride=1,
+                 groups=1,
+                 if_act=True,
+                 deploy=False):
+        super().__init__()
+        self.if_act = if_act
+        self.deploy = deploy
+        self.conv = nn.Sequential(
+            Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=(kernel_size - 1) // 2,
+                groups=groups,
+                bias=False),
+            BatchNorm2d(out_channels)
+        )
+
+        self.conv_aux1_3 = nn.Sequential(
+            Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=(1, 3),
+                stride=stride,
+                padding=(0, 1),
+                groups=groups,
+                bias=False
+            ),
+            BatchNorm2d(out_channels)
+        )
+
+        self.conv_aux3_1 = nn.Sequential(
+            Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=(3, 1),
+                stride=stride,
+                padding=(1, 0),
+                groups=groups,
+                bias=False
+            ),
+            BatchNorm2d(out_channels)
+        )
+
+        self.conv_aux3_3 = nn.Sequential(
+            Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=(3, 3),
+                stride=stride,
+                padding=(1, 1),
+                groups=groups,
+                bias=False
+            ),
+            BatchNorm2d(out_channels)
+        )
+
+        nn.init.kaiming_normal_(self.conv[0].weight.data)
+        if if_act:
+            self.act_layers = nn.Hardswish()
+
+    def forward(self, x):
+        if self.deploy:
+            x = self.conv(x)
+        else:
+            x0 = self.conv(x)
+            x1_3 = self.conv_aux1_3(x)
+            x3_1 = self.conv_aux3_1(x)
+            x3_3 = self.conv_aux3_3(x)
+
+            x = torch.add(x0, x1_3)
+            x = torch.add(x, x3_1)
+            x = torch.add(x, x3_3)
+
+        if self.if_act:
+            return self.act_layers(x)
+        else:
+            return x
+
+    def get_equivalent_kernel_bias(self):
+        kernel3x3, bias3x3 = self._fuse_bn_tensor(self.conv)
+        kernel1x3, bias1x3 = self._fuse_bn_tensor(self.conv_aux1)
+        kernel3x1, bias3x1 = self._fuse_bn_tensor(self.conv_aux2)
+        return (
+            kernel3x3 + self._pad_1x3_to_3x3_tensor(kernel1x3) + self._pad_3x1_to_3x3_tensor(kernel3x1),
+            bias3x3 + bias1x3 + bias3x1,
+        )
+
+    def _pad_1x1_to_3x3_tensor(self, kernel1x1):
+        if kernel1x1 is None:
+            return 0
+        else:
+            return nn.functional.pad(kernel1x1, [1, 1, 1, 1])
+
+    def _pad_1x3_to_3x3_tensor(self, kernel1x1):
+        if kernel1x1 is None:
+            return 0
+        else:
+            return nn.functional.pad(kernel1x1, [0, 0, 1, 1])
+
+    def _pad_3x1_to_3x3_tensor(self, kernel1x1):
+        if kernel1x1 is None:
+            return 0
+        else:
+            return nn.functional.pad(kernel1x1, [1, 1, 0, 0])
+
+    def _fuse_bn_tensor(self, branch):
+        if branch is None:
+            return 0, 0
+        if isinstance(branch, nn.Sequential):
+            kernel = branch[0].weight
+            running_mean = branch[1].running_mean
+            running_var = branch[1].running_var
+            gamma = branch[1].weight
+            beta = branch[1].bias
+            eps = branch[1].eps
+        else:
+            assert isinstance(branch, nn.BatchNorm2d)
+            if not hasattr(self, "id_tensor"):
+                input_dim = self.in_channels // self.groups
+                kernel_value = np.zeros(
+                    (self.in_channels, input_dim, 3, 3), dtype=np.float32
+                )
+                for i in range(self.in_channels):
+                    kernel_value[i, i % input_dim, 1, 1] = 1
+                self.id_tensor = torch.from_numpy(kernel_value).to(branch.weight.device)
+            kernel = self.id_tensor
+            running_mean = branch.running_mean
+            running_var = branch.running_var
+            gamma = branch.weight
+            beta = branch.bias
+            eps = branch.eps
+        std = (running_var + eps).sqrt()
+        t = (gamma / std).reshape(-1, 1, 1, 1)
+        return kernel * t, beta - running_mean * gamma / std
+
+    def rep_net_convert(self):
         kernel, bias = self.get_equivalent_kernel_bias()
         return (
             kernel.detach().cpu().numpy(),

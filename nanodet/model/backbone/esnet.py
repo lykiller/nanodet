@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 from torch.nn import Conv2d, BatchNorm2d, Linear, Dropout
 from torch.nn import AdaptiveAvgPool2d, MaxPool2d
-
+from ..module.conv import RepConvBNLayer
 
 # from ppcls.utils.save_load import load_dygraph_pretrain, load_dygraph_pretrain_from_url
 
@@ -149,21 +149,13 @@ class ESBlock1(nn.Module):
             stride=1)
 
     def forward(self, x):
-        # print(x.shape)
-        x1, x2 = torch.split(
-            x, [x.shape[1] // 2, x.shape[1] // 2], dim=1)
 
-        # print(x1.shape, x2.shape)
+        x1, x2 = torch.split(x, [x.shape[1] // 2, x.shape[1] // 2], dim=1)
         x2 = self.pw_1_1(x2)
-        # print(x2.shape)
         x3 = self.dw_1(x2)
-        # print(x3.shape)
         x3 = torch.cat([x2, x3], dim=1)
-        # print(x3.shape)
         x3 = self.se(x3)
-        # print(x3.shape)
         x3 = self.pw_1_2(x3)
-        # print(x1.shape, x3.shape)
         x = torch.cat([x1, x3], dim=1)
         return channel_shuffle(x, 2)
 
@@ -211,25 +203,15 @@ class ESBlock2(nn.Module):
             in_channels=out_channels, out_channels=out_channels, kernel_size=1)
 
     def forward(self, x):
-        # print("esblock2")
-        # print(x.shape)
         x1 = self.dw_1(x)
-        # print(x1.shape)
         x1 = self.pw_1(x1)
-        # print(x1.shape)
         x2 = self.pw_2_1(x)
-        # print(x2.shape)
         x2 = self.dw_2(x2)
-        # print(x2.shape)
         x2 = self.se(x2)
         x2 = self.pw_2_2(x2)
-        # print(x2.shape)
         x = torch.cat([x1, x2], dim=1)
-        # print(x.shape)
         x = self.concat_dw(x)
-        # print(x.shape)
         x = self.concat_pw(x)
-        # print(x.shape)
         return x
 
 
@@ -278,21 +260,166 @@ class ESNet(nn.Module):
     def forward(self, x):
         output = []
         x = self.conv1(x)
-        # print(x.shape)
         x = self.max_pool(x)
-        # print(x.shape)
         x = self.stage2(x)
-        # print(x.shape)
         output.append(x)
         x = self.stage3(x)
-        # print(x.shape)
         output.append(x)
         x = self.stage4(x)
-        # print(x.shape)
         output.append(x)
         return tuple(output)
 
 
+class RepESBlock1(nn.Module):
+    def __init__(self, in_channels, out_channels, deploy=False):
+        super().__init__()
+        self.pw_1_1 = ConvBNLayer(
+            in_channels=in_channels // 2,
+            out_channels=out_channels // 2,
+            kernel_size=1,
+            stride=1)
+        self.dw_1 = RepConvBNLayer(
+            in_channels=out_channels // 2,
+            out_channels=out_channels // 2,
+            kernel_size=3,
+            stride=1,
+            groups=out_channels // 2,
+            if_act=False,
+            deploy=deploy
+        )
+        self.se = SEModule(out_channels)
 
+        self.pw_1_2 = ConvBNLayer(
+            in_channels=out_channels,
+            out_channels=out_channels // 2,
+            kernel_size=1,
+            stride=1)
+
+    def forward(self, x):
+
+        x1, x2 = torch.split(x, [x.shape[1] // 2, x.shape[1] // 2], dim=1)
+        x2 = self.pw_1_1(x2)
+        x3 = self.dw_1(x2)
+        x3 = torch.cat([x2, x3], dim=1)
+        x3 = self.se(x3)
+        x3 = self.pw_1_2(x3)
+        x = torch.cat([x1, x3], dim=1)
+        return channel_shuffle(x, 2)
+
+
+class RepESBlock2(nn.Module):
+    def __init__(self, in_channels, out_channels, deploy=False):
+        super().__init__()
+
+        # branch1
+        self.dw_1 = RepConvBNLayer(
+            in_channels=in_channels,
+            out_channels=in_channels,
+            kernel_size=3,
+            stride=2,
+            groups=in_channels,
+            if_act=False,
+            deploy=deploy
+        )
+        self.pw_1 = ConvBNLayer(
+            in_channels=in_channels,
+            out_channels=out_channels // 2,
+            kernel_size=1,
+            stride=1)
+        # branch2
+        self.pw_2_1 = ConvBNLayer(
+            in_channels=in_channels,
+            out_channels=out_channels // 2,
+            kernel_size=1)
+        self.dw_2 = RepConvBNLayer(
+            in_channels=out_channels // 2,
+            out_channels=out_channels // 2,
+            kernel_size=3,
+            stride=2,
+            groups=out_channels // 2,
+            if_act=False,
+            deploy=deploy
+        )
+        self.se = SEModule(out_channels // 2)
+        self.pw_2_2 = ConvBNLayer(
+            in_channels=out_channels // 2,
+            out_channels=out_channels // 2,
+            kernel_size=1)
+        self.concat_dw = RepConvBNLayer(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            groups=out_channels,
+            deploy=deploy
+        )
+        self.concat_pw = ConvBNLayer(
+            in_channels=out_channels, out_channels=out_channels, kernel_size=1)
+
+    def forward(self, x):
+        x1 = self.dw_1(x)
+        x1 = self.pw_1(x1)
+        x2 = self.pw_2_1(x)
+        x2 = self.dw_2(x2)
+        x2 = self.se(x2)
+        x2 = self.pw_2_2(x2)
+        x = torch.cat([x1, x2], dim=1)
+        x = self.concat_dw(x)
+        x = self.concat_pw(x)
+        return x
+
+
+class RepESNet(nn.Module):
+    def __init__(self,
+                 class_num=1000,
+                 scale=1.0,
+                 dropout_prob=0.2,
+                 class_expand=1280,
+                 return_patterns=None,
+                 return_stages=None,
+                 model_size="1.0x",
+                 out_stages=(2, 3, 4),
+                 activation='ReLu',
+                 ):
+        super(RepESNet, self).__init__()
+        self.scale = scale
+        self.class_num = class_num
+        self.class_expand = class_expand
+        stage_repeats = [3, 7, 3]
+        stage_out_channels = [-1, 24, make_divisible(116 * scale), make_divisible(232 * scale),
+            make_divisible(464 * scale), 1024]
+        stage_out_channels = [-1, 24, 116, 232, 464, 1024]
+        self.conv1 = RepConvBNLayer(
+            in_channels=3,
+            out_channels=stage_out_channels[1],
+            kernel_size=3,
+            stride=2)
+        self.max_pool = MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        stage_names = ["stage{}".format(i) for i in [2, 3, 4]]
+        for stage_id, num_repeat in enumerate(stage_repeats):
+            seq = []
+            for i in range(num_repeat):
+                if i == 0:
+                    block = RepESBlock2(
+                        in_channels=stage_out_channels[stage_id + 1],
+                        out_channels=stage_out_channels[stage_id + 2])
+                else:
+                    block = RepESBlock1(
+                        in_channels=stage_out_channels[stage_id + 2],
+                        out_channels=stage_out_channels[stage_id + 2])
+                seq.append(block)
+            setattr(self, stage_names[stage_id], nn.Sequential(*seq))
+
+    def forward(self, x):
+        output = []
+        x = self.conv1(x)
+        x = self.max_pool(x)
+        x = self.stage2(x)
+        output.append(x)
+        x = self.stage3(x)
+        output.append(x)
+        x = self.stage4(x)
+        output.append(x)
+        return tuple(output)
 
 

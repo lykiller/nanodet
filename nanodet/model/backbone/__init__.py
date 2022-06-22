@@ -20,16 +20,11 @@ from .ghostnet import GhostNet
 from .mobilenetv2 import MobileNetV2
 from .repvgg import RepVGG
 from .resnet import ResNet
-from .shufflenetv2 import ShuffleNetV2
-from .shufflenetv3 import ShuffleNetV3
-from .shufflenet_tiny import ShuffleNetTiny
-from .shufflenet_tinyse import ShuffleNetTinySe
-from .shufflenetse import ShuffleNetSe
-from .shufflenet_lite import ShuffleNetLite
+from .shufflenetv2 import ShuffleNetV2, RepShuffleNetV2
 from .dsod_tiny import DsodTiny
 from .dsod_tiny import DsodTinyV2
 from .dsod_tiny import DsodTinyMnn
-from .esnet import ESNet
+from .esnet import ESNet, RepESNet
 from .mobilenet_one import MobileNetONE
 
 
@@ -40,6 +35,8 @@ def build_backbone(cfg):
         return ResNet(**backbone_cfg)
     elif name == "ShuffleNetV2":
         return ShuffleNetV2(**backbone_cfg)
+    elif name == "RepShuffleNetV2":
+        return RepShuffleNetV2(**backbone_cfg)
     elif name == "GhostNet":
         return GhostNet(**backbone_cfg)
     elif name == "MobileNetV2":
@@ -50,16 +47,6 @@ def build_backbone(cfg):
         return CustomCspNet(**backbone_cfg)
     elif name == "RepVGG":
         return RepVGG(**backbone_cfg)
-    elif name == "ShuffleNetV3":
-        return ShuffleNetV3(**backbone_cfg)
-    elif name == "ShuffleNetTiny":
-        return ShuffleNetTiny(**backbone_cfg)
-    elif name == "ShuffleNetTinySe":
-        return ShuffleNetTinySe(**backbone_cfg)
-    elif name == "ShuffleNetSe":
-        return ShuffleNetSe(**backbone_cfg)
-    elif name == "ShuffleNetLite":
-        return ShuffleNetLite(**backbone_cfg)
     elif name == 'DsodTiny':
         return DsodTiny(**backbone_cfg)
     elif name == 'DsodTinyV2':
@@ -68,6 +55,8 @@ def build_backbone(cfg):
         return DsodTinyMnn(**backbone_cfg)
     elif name == 'ESNet' or name == 'EsNet':
         return ESNet(**backbone_cfg)
+    elif name == 'RepESNet':
+        return RepESNet(**backbone_cfg)
     elif name == 'MobileNetONE':
         return MobileNetONE(**backbone_cfg)
     else:

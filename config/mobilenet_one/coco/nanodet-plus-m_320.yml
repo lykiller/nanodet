@@ -5,7 +5,7 @@
 #           AP_small = 0.083
 #               AP_m = 0.278
 #               AP_l = 0.451
-save_dir: workspace/mobilenet_one/nanodet-plus-m_320
+save_dir: workspace/mobilenet_one/coco/nanodet-plus-m_320
 model:
   weight_averager:
     name: ExpMovingAverager

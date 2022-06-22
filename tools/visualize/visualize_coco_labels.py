@@ -5,8 +5,10 @@ from pycocotools.coco import COCO
 
 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
 
-img_path = '/home/user/work/dataset/df_bsd/imgs'
-annFile = '/home/user/work/dataset/df_bsd/annotations/bsd_soda_coco.json'
+dataset_dir = 'D:\\dataset\\coco'
+
+img_path = os.path.join(dataset_dir, 'val2017')
+annFile = os.path.join(dataset_dir, 'annotations', 'instances_val2017.json')
 save_path = '/home/user/work/dataset/df_bsd/visualize_soda_df_bsd'
 
 if not os.path.exists(save_path):

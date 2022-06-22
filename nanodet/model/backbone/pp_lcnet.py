@@ -19,7 +19,7 @@ import torch.nn as nn
 from torch import ParameterDict
 from torch.nn import AdaptiveAvgPool2d, BatchNorm2d, Conv2d, Dropout, Linear
 from torch.regularizer import L2Decay
-from torch.nn.initializer import KaimingNormal
+
 from nanodet.model.module.theseus import TheseusLayer
 # from ppcls.utils.save_load import load_dygraph_pretrain, load_dygraph_pretrain_from_url
 
@@ -177,7 +177,7 @@ class SEModule(TheseusLayer):
         x = self.relu(x)
         x = self.conv2(x)
         x = self.hardsigmoid(x)
-        x = paddle.multiply(x=identity, y=x)
+        x = torch.multiply(x=identity, y=x)
         return x
 
 
@@ -289,16 +289,16 @@ class PPLCNet(TheseusLayer):
                     ) in enumerate(self.net_config["blocks6"])
         ])
 
-        self.avg_pool = AdaptiveAvgPool2D(1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
         if self.use_last_conv:
-            self.last_conv = Conv2D(
+            self.last_conv = nn.Conv2d(
                 in_channels=make_divisible(self.net_config["blocks6"][-1][2] *
                                            scale),
                 out_channels=self.class_expand,
                 kernel_size=1,
                 stride=1,
                 padding=0,
-                bias_attr=False)
+                bias=False)
             self.hardswish = nn.Hardswish()
             self.dropout = Dropout(p=dropout_prob, mode="downscale_in_infer")
         else:
