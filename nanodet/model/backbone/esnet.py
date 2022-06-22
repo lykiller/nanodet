@@ -18,8 +18,8 @@ import torch.nn as nn
 from torch.nn import Conv2d, BatchNorm2d, Linear, Dropout
 from torch.nn import AdaptiveAvgPool2d, MaxPool2d
 from ..module.conv import RepConvBNLayer
-
-# from ppcls.utils.save_load import load_dygraph_pretrain, load_dygraph_pretrain_from_url
+from ..sparse_ops.sparse_ops import SparseConv
+from ..sparse_ops.syncbn_layer import SyncBatchNorm2d
 
 MODEL_URLS = {
     "ESNet_x0_25":
@@ -69,25 +69,38 @@ class ConvBNLayer(nn.Module):
                  kernel_size,
                  stride=1,
                  groups=1,
-                 if_act=True):
+                 if_act=True,
+                 if_sparse=False):
         super().__init__()
 
-        self.conv = Conv2d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=(kernel_size - 1) // 2,
-            groups=groups,
-            bias=False)
+        if if_sparse:
+            self.conv = SparseConv(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=(kernel_size - 1) // 2,
+                groups=groups,
+                bias=False)
+
+        else:
+            self.conv = Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=(kernel_size - 1) // 2,
+                groups=groups,
+                bias=False)
+        self.bn = BatchNorm2d(out_channels)
 
         nn.init.kaiming_normal_(self.conv.weight.data)
-
-        self.bn = BatchNorm2d(out_channels)
         self.if_act = if_act
         self.hardswish = nn.Hardswish()
 
     def forward(self, x):
+        # print(x.shape)
+        # print(self.conv.weight.data.shape)
         x = self.conv(x)
         x = self.bn(x)
         if self.if_act:
@@ -126,27 +139,33 @@ class SEModule(nn.Module):
 
 
 class ESBlock1(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, if_sparse=False):
         super().__init__()
         self.pw_1_1 = ConvBNLayer(
             in_channels=in_channels // 2,
             out_channels=out_channels // 2,
             kernel_size=1,
-            stride=1)
+            stride=1,
+            if_sparse=if_sparse
+        )
         self.dw_1 = ConvBNLayer(
             in_channels=out_channels // 2,
             out_channels=out_channels // 2,
             kernel_size=3,
             stride=1,
             groups=out_channels // 2,
-            if_act=False)
+            if_act=False,
+            if_sparse=if_sparse
+        )
         self.se = SEModule(out_channels)
 
         self.pw_1_2 = ConvBNLayer(
             in_channels=out_channels,
             out_channels=out_channels // 2,
             kernel_size=1,
-            stride=1)
+            stride=1,
+            if_sparse=if_sparse
+        )
 
     def forward(self, x):
 
@@ -161,7 +180,7 @@ class ESBlock1(nn.Module):
 
 
 class ESBlock2(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, if_sparse=False):
         super().__init__()
 
         # branch1
@@ -171,7 +190,9 @@ class ESBlock2(nn.Module):
             kernel_size=3,
             stride=2,
             groups=in_channels,
-            if_act=False)
+            if_act=False,
+            if_sparse=if_sparse
+        )
         self.pw_1 = ConvBNLayer(
             in_channels=in_channels,
             out_channels=out_channels // 2,
@@ -226,20 +247,25 @@ class ESNet(nn.Module):
                  model_size="1.0x",
                  out_stages=(2, 3, 4),
                  activation='ReLu',
+                 if_sparse=False
                  ):
         super(ESNet, self).__init__()
         self.scale = scale
         self.class_num = class_num
         self.class_expand = class_expand
         stage_repeats = [3, 7, 3]
-        stage_out_channels = [-1, 24, make_divisible(116 * scale), make_divisible(232 * scale),
-            make_divisible(464 * scale), 1024]
-        stage_out_channels = [-1, 24, 116, 232, 464, 1024]
+        # stage_out_channels = [-1, 24, make_divisible(116 * scale), make_divisible(232 * scale), make_divisible(464 * scale), 1024]
+        if if_sparse:
+            stage_out_channels = [-1, 24, 120, 240, 480, 1028]
+        else:
+            stage_out_channels = [-1, 24, 116, 232, 464, 1024]
         self.conv1 = ConvBNLayer(
             in_channels=3,
             out_channels=stage_out_channels[1],
             kernel_size=3,
-            stride=2)
+            stride=2,
+            if_sparse=if_sparse
+        )
         self.max_pool = MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         stage_names = ["stage{}".format(i) for i in [2, 3, 4]]
@@ -249,11 +275,15 @@ class ESNet(nn.Module):
                 if i == 0:
                     block = ESBlock2(
                         in_channels=stage_out_channels[stage_id + 1],
-                        out_channels=stage_out_channels[stage_id + 2])
+                        out_channels=stage_out_channels[stage_id + 2],
+                        if_sparse=if_sparse
+                    )
                 else:
                     block = ESBlock1(
                         in_channels=stage_out_channels[stage_id + 2],
-                        out_channels=stage_out_channels[stage_id + 2])
+                        out_channels=stage_out_channels[stage_id + 2],
+                        if_sparse=if_sparse
+                    )
                 seq.append(block)
             setattr(self, stage_names[stage_id], nn.Sequential(*seq))
 

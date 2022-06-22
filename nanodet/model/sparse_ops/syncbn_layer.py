@@ -5,6 +5,7 @@ from torch.nn.modules.module import Module
 import torch.distributed as dist
 import torch.nn as nn
 
+
 class SyncBNFunc(Function):
 
     @staticmethod
@@ -21,6 +22,7 @@ class SyncBNFunc(Function):
                 var_bn = temp.mean(0, keepdim=True) - mean_bn ** 2
 
                 sum_x = mean_bn ** 2 + var_bn
+                print(mean_bn)
                 dist.all_reduce(mean_bn)
                 mean_bn /= dist.get_world_size()
                 dist.all_reduce(sum_x)
@@ -63,9 +65,10 @@ class SyncBNFunc(Function):
             raise RuntimeError('SyncBNFunc only support CUDA computation!')
         return inDiff, scaleDiff, shiftDiff, None, None, None, None, None
 
+
 class SyncBatchNorm2d(Module):
 
-    def __init__(self, num_features, eps=1e-5, momentum=0.9,last_gamma=False):
+    def __init__(self, num_features, eps=1e-5, momentum=0.9, last_gamma=False):
         super(SyncBatchNorm2d, self).__init__()
         self.num_features = num_features
         self.eps = eps

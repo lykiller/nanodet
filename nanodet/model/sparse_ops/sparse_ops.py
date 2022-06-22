@@ -2,8 +2,6 @@ import torch
 from torch import autograd, nn
 import torch.nn.functional as F
 
-from itertools import repeat
-from torch._six import container_abcs
 
 
 class Sparse(autograd.Function):
