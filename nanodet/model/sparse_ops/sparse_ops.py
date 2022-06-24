@@ -3,7 +3,6 @@ from torch import autograd, nn
 import torch.nn.functional as F
 
 
-
 class Sparse(autograd.Function):
     """" Prune the unimprotant weight for the forwards phase but pass the gradient to dense weight using SR-STE in the backwards phase"""
 

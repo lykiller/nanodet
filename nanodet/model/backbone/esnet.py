@@ -18,8 +18,12 @@ import torch.nn as nn
 from torch.nn import Conv2d, BatchNorm2d, Linear, Dropout
 from torch.nn import AdaptiveAvgPool2d, MaxPool2d
 from ..module.conv import RepConvBNLayer
-from ..sparse_ops.sparse_ops import SparseConv
+
 from ..sparse_ops.syncbn_layer import SyncBatchNorm2d
+import numpy as np
+
+from ..module.se import SEModule
+from ..module.conv import ConvBNLayer
 
 MODEL_URLS = {
     "ESNet_x0_25":
@@ -60,82 +64,6 @@ def make_divisible(v, divisor=8, min_value=None):
     if new_v < 0.9 * v:
         new_v += divisor
     return new_v
-
-
-class ConvBNLayer(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel_size,
-                 stride=1,
-                 groups=1,
-                 if_act=True,
-                 if_sparse=False):
-        super().__init__()
-
-        if if_sparse:
-            self.conv = SparseConv(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=(kernel_size - 1) // 2,
-                groups=groups,
-                bias=False)
-
-        else:
-            self.conv = Conv2d(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=(kernel_size - 1) // 2,
-                groups=groups,
-                bias=False)
-        self.bn = BatchNorm2d(out_channels)
-
-        nn.init.kaiming_normal_(self.conv.weight.data)
-        self.if_act = if_act
-        self.hardswish = nn.Hardswish()
-
-    def forward(self, x):
-        # print(x.shape)
-        # print(self.conv.weight.data.shape)
-        x = self.conv(x)
-        x = self.bn(x)
-        if self.if_act:
-            x = self.hardswish(x)
-        return x
-
-
-class SEModule(nn.Module):
-    def __init__(self, channel, reduction=4):
-        super().__init__()
-        self.avg_pool = AdaptiveAvgPool2d(1)
-        self.conv1 = Conv2d(
-            in_channels=channel,
-            out_channels=channel // reduction,
-            kernel_size=1,
-            stride=1,
-            padding=0)
-        self.relu = nn.ReLU()
-        self.conv2 = Conv2d(
-            in_channels=channel // reduction,
-            out_channels=channel,
-            kernel_size=1,
-            stride=1,
-            padding=0)
-        self.hardsigmoid = nn.Hardsigmoid()
-
-    def forward(self, x):
-        identity = x
-        x = self.avg_pool(x)
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.hardsigmoid(x)
-        x = torch.multiply(identity, x)
-        return x
 
 
 class ESBlock1(nn.Module):
@@ -409,6 +337,7 @@ class RepESNet(nn.Module):
                  model_size="1.0x",
                  out_stages=(2, 3, 4),
                  activation='ReLu',
+                 deploy=False
                  ):
         super(RepESNet, self).__init__()
         self.scale = scale
@@ -422,7 +351,9 @@ class RepESNet(nn.Module):
             in_channels=3,
             out_channels=stage_out_channels[1],
             kernel_size=3,
-            stride=2)
+            stride=2,
+            deploy=deploy
+        )
         self.max_pool = MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         stage_names = ["stage{}".format(i) for i in [2, 3, 4]]
@@ -432,11 +363,15 @@ class RepESNet(nn.Module):
                 if i == 0:
                     block = RepESBlock2(
                         in_channels=stage_out_channels[stage_id + 1],
-                        out_channels=stage_out_channels[stage_id + 2])
+                        out_channels=stage_out_channels[stage_id + 2],
+                        deploy=deploy
+                    )
                 else:
                     block = RepESBlock1(
                         in_channels=stage_out_channels[stage_id + 2],
-                        out_channels=stage_out_channels[stage_id + 2])
+                        out_channels=stage_out_channels[stage_id + 2],
+                        deploy=deploy
+                    )
                 seq.append(block)
             setattr(self, stage_names[stage_id], nn.Sequential(*seq))
 
@@ -453,3 +388,18 @@ class RepESNet(nn.Module):
         return tuple(output)
 
 
+def rep_det_model_convert(model, deploy_model):
+    converted_weights = {}
+    deploy_model.load_state_dict(model.state_dict(), strict=False)
+    for name, module in model.backbone.named_modules():
+        if hasattr(module, "rep_net_convert"):
+            kernel, bias = module.rep_net_convert()
+            converted_weights[name + ".rbr_reparam.weight"] = kernel
+            converted_weights[name + ".rbr_reparam.bias"] = bias
+    del model
+    for name, param in deploy_model.backbone.named_parameters():
+        if converted_weights.__contains__(name):
+
+            print("deploy param: ", name, param.size(), np.mean(converted_weights[name]))
+            param.data = torch.from_numpy(converted_weights[name]).float()
+    return deploy_model

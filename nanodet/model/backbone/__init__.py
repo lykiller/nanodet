@@ -26,6 +26,7 @@ from .dsod_tiny import DsodTinyV2
 from .dsod_tiny import DsodTinyMnn
 from .esnet import ESNet, RepESNet
 from .mobilenet_one import MobileNetONE
+from .rep_lcnet import RepLCNet
 
 
 def build_backbone(cfg):
@@ -59,5 +60,7 @@ def build_backbone(cfg):
         return RepESNet(**backbone_cfg)
     elif name == 'MobileNetONE':
         return MobileNetONE(**backbone_cfg)
+    elif name == 'RepLCNet':
+        return RepLCNet(**backbone_cfg)
     else:
         raise NotImplementedError

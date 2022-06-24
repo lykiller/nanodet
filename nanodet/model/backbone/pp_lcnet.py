@@ -56,9 +56,8 @@ __all__ = list(MODEL_URLS.keys())
 # use_se: whether to use SE block
 
 NET_CONFIG = {
-    "blocks2":
-    #k, in_c, out_c, s, use_se
-    [[3, 16, 32, 1, False]],
+    # k, in_c, out_c, s, use_se
+    "blocks2": [[3, 16, 32, 1, False]],
     "blocks3": [[3, 32, 64, 2, False], [3, 64, 64, 1, False]],
     "blocks4": [[3, 64, 128, 2, False], [3, 128, 128, 1, False]],
     "blocks5": [[3, 128, 256, 2, False], [5, 256, 256, 1, False],
@@ -77,33 +76,27 @@ def make_divisible(v, divisor=8, min_value=None):
     return new_v
 
 
-class ConvBNLayer(TheseusLayer):
+class ConvBNLayer(nn.Module):
     def __init__(self,
                  num_channels,
                  filter_size,
                  num_filters,
                  stride,
                  num_groups=1,
-                 lr_mult=1.0):
+                 lr_mult=1.0
+                 ):
         super().__init__()
 
-        self.conv = Conv2D(
+        self.conv = nn.Conv2d(
             in_channels=num_channels,
             out_channels=num_filters,
             kernel_size=filter_size,
             stride=stride,
             padding=(filter_size - 1) // 2,
             groups=num_groups,
-            weight_attr=ParamAttr(
-                initializer=KaimingNormal(), learning_rate=lr_mult),
-            bias_attr=False)
+            bias=False)
 
-        self.bn = BatchNorm2D(
-            num_filters,
-            weight_attr=ParamAttr(
-                regularizer=L2Decay(0.0), learning_rate=lr_mult),
-            bias_attr=ParamAttr(
-                regularizer=L2Decay(0.0), learning_rate=lr_mult))
+        self.bn = nn.BatchNorm2d(num_filters)
         self.hardswish = nn.Hardswish()
 
     def forward(self, x):
@@ -113,7 +106,7 @@ class ConvBNLayer(TheseusLayer):
         return x
 
 
-class DepthwiseSeparable(TheseusLayer):
+class DepthwiseSeparable(nn.Module):
     def __init__(self,
                  num_channels,
                  num_filters,
@@ -147,41 +140,9 @@ class DepthwiseSeparable(TheseusLayer):
         return x
 
 
-class SEModule(TheseusLayer):
-    def __init__(self, channel, reduction=4, lr_mult=1.0):
-        super().__init__()
-        self.avg_pool = AdaptiveAvgPool2D(1)
-        self.conv1 = Conv2D(
-            in_channels=channel,
-            out_channels=channel // reduction,
-            kernel_size=1,
-            stride=1,
-            padding=0,
-            weight_attr=ParamAttr(learning_rate=lr_mult),
-            bias_attr=ParamAttr(learning_rate=lr_mult))
-        self.relu = nn.ReLU()
-        self.conv2 = Conv2D(
-            in_channels=channel // reduction,
-            out_channels=channel,
-            kernel_size=1,
-            stride=1,
-            padding=0,
-            weight_attr=ParamAttr(learning_rate=lr_mult),
-            bias_attr=ParamAttr(learning_rate=lr_mult))
-        self.hardsigmoid = nn.Hardsigmoid()
-
-    def forward(self, x):
-        identity = x
-        x = self.avg_pool(x)
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.hardsigmoid(x)
-        x = torch.multiply(x=identity, y=x)
-        return x
 
 
-class PPLCNet(TheseusLayer):
+class PPLCNet(nn.Module):
     def __init__(self,
                  stages_pattern,
                  scale=1.0,
@@ -332,142 +293,6 @@ class PPLCNet(TheseusLayer):
         return x
 
 
-def _load_pretrained(pretrained, model, model_url, use_ssld):
-    if pretrained is False:
-        pass
-    elif pretrained is True:
-        load_dygraph_pretrain_from_url(model, model_url, use_ssld=use_ssld)
-    elif isinstance(pretrained, str):
-        load_dygraph_pretrain(model, pretrained)
-    else:
-        raise RuntimeError(
-            "pretrained type is not available. Please use `string` or `boolean` type."
-        )
 
 
-def PPLCNet_x0_25(pretrained=False, use_ssld=False, **kwargs):
-    """
-    PPLCNet_x0_25
-    Args:
-        pretrained: bool=False or str. If `True` load pretrained parameters, `False` otherwise.
-                    If str, means the path of the pretrained model.
-        use_ssld: bool=False. Whether using distillation pretrained model when pretrained=True.
-    Returns:
-        model: nn.Layer. Specific `PPLCNet_x0_25` model depends on args.
-    """
-    model = PPLCNet(
-        scale=0.25, stages_pattern=MODEL_STAGES_PATTERN["PPLCNet"], **kwargs)
-    _load_pretrained(pretrained, model, MODEL_URLS["PPLCNet_x0_25"], use_ssld)
-    return model
 
-
-def PPLCNet_x0_35(pretrained=False, use_ssld=False, **kwargs):
-    """
-    PPLCNet_x0_35
-    Args:
-        pretrained: bool=False or str. If `True` load pretrained parameters, `False` otherwise.
-                    If str, means the path of the pretrained model.
-        use_ssld: bool=False. Whether using distillation pretrained model when pretrained=True.
-    Returns:
-        model: nn.Layer. Specific `PPLCNet_x0_35` model depends on args.
-    """
-    model = PPLCNet(
-        scale=0.35, stages_pattern=MODEL_STAGES_PATTERN["PPLCNet"], **kwargs)
-    _load_pretrained(pretrained, model, MODEL_URLS["PPLCNet_x0_35"], use_ssld)
-    return model
-
-
-def PPLCNet_x0_5(pretrained=False, use_ssld=False, **kwargs):
-    """
-    PPLCNet_x0_5
-    Args:
-        pretrained: bool=False or str. If `True` load pretrained parameters, `False` otherwise.
-                    If str, means the path of the pretrained model.
-        use_ssld: bool=False. Whether using distillation pretrained model when pretrained=True.
-    Returns:
-        model: nn.Layer. Specific `PPLCNet_x0_5` model depends on args.
-    """
-    model = PPLCNet(
-        scale=0.5, stages_pattern=MODEL_STAGES_PATTERN["PPLCNet"], **kwargs)
-    _load_pretrained(pretrained, model, MODEL_URLS["PPLCNet_x0_5"], use_ssld)
-    return model
-
-
-def PPLCNet_x0_75(pretrained=False, use_ssld=False, **kwargs):
-    """
-    PPLCNet_x0_75
-    Args:
-        pretrained: bool=False or str. If `True` load pretrained parameters, `False` otherwise.
-                    If str, means the path of the pretrained model.
-        use_ssld: bool=False. Whether using distillation pretrained model when pretrained=True.
-    Returns:
-        model: nn.Layer. Specific `PPLCNet_x0_75` model depends on args.
-    """
-    model = PPLCNet(
-        scale=0.75, stages_pattern=MODEL_STAGES_PATTERN["PPLCNet"], **kwargs)
-    _load_pretrained(pretrained, model, MODEL_URLS["PPLCNet_x0_75"], use_ssld)
-    return model
-
-
-def PPLCNet_x1_0(pretrained=False, use_ssld=False, **kwargs):
-    """
-    PPLCNet_x1_0
-    Args:
-        pretrained: bool=False or str. If `True` load pretrained parameters, `False` otherwise.
-                    If str, means the path of the pretrained model.
-        use_ssld: bool=False. Whether using distillation pretrained model when pretrained=True.
-    Returns:
-        model: nn.Layer. Specific `PPLCNet_x1_0` model depends on args.
-    """
-    model = PPLCNet(
-        scale=1.0, stages_pattern=MODEL_STAGES_PATTERN["PPLCNet"], **kwargs)
-    _load_pretrained(pretrained, model, MODEL_URLS["PPLCNet_x1_0"], use_ssld)
-    return model
-
-
-def PPLCNet_x1_5(pretrained=False, use_ssld=False, **kwargs):
-    """
-    PPLCNet_x1_5
-    Args:
-        pretrained: bool=False or str. If `True` load pretrained parameters, `False` otherwise.
-                    If str, means the path of the pretrained model.
-        use_ssld: bool=False. Whether using distillation pretrained model when pretrained=True.
-    Returns:
-        model: nn.Layer. Specific `PPLCNet_x1_5` model depends on args.
-    """
-    model = PPLCNet(
-        scale=1.5, stages_pattern=MODEL_STAGES_PATTERN["PPLCNet"], **kwargs)
-    _load_pretrained(pretrained, model, MODEL_URLS["PPLCNet_x1_5"], use_ssld)
-    return model
-
-
-def PPLCNet_x2_0(pretrained=False, use_ssld=False, **kwargs):
-    """
-    PPLCNet_x2_0
-    Args:
-        pretrained: bool=False or str. If `True` load pretrained parameters, `False` otherwise.
-                    If str, means the path of the pretrained model.
-        use_ssld: bool=False. Whether using distillation pretrained model when pretrained=True.
-    Returns:
-        model: nn.Layer. Specific `PPLCNet_x2_0` model depends on args.
-    """
-    model = PPLCNet(
-        scale=2.0, stages_pattern=MODEL_STAGES_PATTERN["PPLCNet"], **kwargs)
-    _load_pretrained(pretrained, model, MODEL_URLS["PPLCNet_x2_0"], use_ssld)
-    return model
-
-
-def PPLCNet_x2_5(pretrained=False, use_ssld=False, **kwargs):
-    """
-    PPLCNet_x2_5
-    Args:
-        pretrained: bool=False or str. If `True` load pretrained parameters, `False` otherwise.
-                    If str, means the path of the pretrained model.
-        use_ssld: bool=False. Whether using distillation pretrained model when pretrained=True.
-    Returns:
-        model: nn.Layer. Specific `PPLCNet_x2_5` model depends on args.
-    """
-    model = PPLCNet(
-        scale=2.5, stages_pattern=MODEL_STAGES_PATTERN["PPLCNet"], **kwargs)
-    _load_pretrained(pretrained, model, MODEL_URLS["PPLCNet_x2_5"], use_ssld)
-    return model
